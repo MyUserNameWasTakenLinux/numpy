@@ -679,10 +679,30 @@ string_to_long_cdouble(PyObject *op)
 
         const char *p = end;
         if (*p != '+' && *p != '-') {
-            npy_csetreall(&temp, real);
-            npy_csetimagl(&temp, 0);
-            Py_XDECREF(b);
-            return temp;
+            if(*p == 'j') {
+                p++;
+                // Handles the case of just an imaginary
+                npy_csetreall(&temp, 0);
+                npy_csetimagl(&temp, real);
+            } else {
+                npy_csetreall(&temp, real);
+                npy_csetimagl(&temp, 0);
+            }
+            // Skip trailing spaces
+            while (*p != '\0' && isspace((unsigned char) *p)) {
+                p++;
+            }
+            if (*p != '\0') {
+                PyErr_Format(PyExc_ValueError,
+                            "invalid literal for complex long double: %s",
+                            s);
+                Py_XDECREF(b);
+                return temp;
+            }
+            else {
+                Py_XDECREF(b);
+                return temp;
+            }
         }
 
         errno = 0;
