@@ -782,10 +782,16 @@ CLONGDOUBLE_setitem(PyObject *op, void *ov, void *vap)
             npy_csetreall(&temp, NPY_NAN);
             npy_csetimagl(&temp, NPY_NAN);
         }
-        if (PyErr_Occurred()) {
-            return -1;
+        else if (PyBytes_Check(op) || PyUnicode_Check(op)) {
+            temp = string_to_long_cdouble(op);
+        } else {
+            Py_complex oop = PyComplex_AsCComplex(op);
+            if (error_converting(oop.real)) {
+                return -1;
+            }
+            npy_csetreall(&temp, (npy_longdouble) oop.real);
+            npy_csetimagl(&temp, (npy_longdouble) oop.imag);
         }
-        temp = string_to_long_cdouble(op);
     }
     if (PyErr_Occurred()) {
         return -1;
