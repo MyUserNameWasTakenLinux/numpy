@@ -796,12 +796,10 @@ CLONGDOUBLE_setitem(PyObject *op, void *ov, void *vap)
     if (PyErr_Occurred()) {
         return -1;
     }
-    if(ap == NULL || PyArray_ISBEHAVED(ap)) {
-        *((npy_clongdouble *)ov) = temp;
-    }
-    else {
-        copy_and_swap(ov, &temp, PyArray_ITEMSIZE(ap), 1, 0,
-                        PyArray_ISBYTESWAPPED(ap));
+    
+    memcpy(ov, &temp, NPY_SIZEOF_CLONGDOUBLE);
+    if (ap != NULL && PyArray_ISBYTESWAPPED(ap)) {
+        byte_swap_vector(ov, 2, sizeof(npy_longdouble));
     }
     return 0;
 }
