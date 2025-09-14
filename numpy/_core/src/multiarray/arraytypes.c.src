@@ -622,21 +622,15 @@ LONGDOUBLE_setitem(PyObject *op, void *ov, void *vap)
 }
 
 static inline npy_clongdouble
-string_to_long_cdouble(PyObject *op)
+string_to_clong_double(PyObject *op)
 {
     char *s;
+    char *start;
     char *end;
     npy_clongdouble temp;
     npy_csetreall(&temp, 0);
     npy_csetimagl(&temp, 0);
     PyObject *b;
-
-    if ((PyLong_Check(op) && !PyBool_Check(op))) {
-        npy_longdouble real = npy_longdouble_from_PyLong(op);
-        npy_csetreall(&temp, real);
-        npy_csetimagl(&temp, 0);
-        return temp;
-    }
 
     if (PyUnicode_Check(op)) {
         b = PyUnicode_AsUTF8String(op);
@@ -650,6 +644,17 @@ string_to_long_cdouble(PyObject *op)
     }
     s = PyBytes_AsString(b);
     if (s) {
+        npy_bool has_brackets = NPY_FALSE;
+        start = s;
+
+        while (isspace((unsigned char) *s)) {
+            ++s;
+        }
+        if (*s == '(') {
+            has_brackets = NPY_TRUE;
+            s++;
+        }
+
         errno = 0;
         npy_longdouble real = NumPyOS_ascii_strtold(s, &end);
         if (errno == ERANGE) {
@@ -660,26 +665,17 @@ string_to_long_cdouble(PyObject *op)
             }
         }
         else if (errno) {
-            PyErr_Format(PyExc_ValueError,
-                        "invalid literal for complex long double: %s (%s)",
-                        s,
-                        strerror(errno));
-            Py_XDECREF(b);
-            return temp;
+            goto parse_failure;
         }
 
         /* Nothing parsed */
         if (end == s) {
-            PyErr_Format(PyExc_ValueError,
-                        "invalid literal for complex long double: %s",
-                        s);
-            Py_XDECREF(b);
-            return temp;
+            goto parse_failure;
         }
 
         const char *p = end;
         if (*p != '+' && *p != '-') {
-            if(*p == 'j') {
+            if(*p == 'j' || *p == 'J') {
                 p++;
                 // Handles the case of just an imaginary
                 npy_csetreall(&temp, 0);
@@ -692,16 +688,28 @@ string_to_long_cdouble(PyObject *op)
             while (*p != '\0' && isspace((unsigned char) *p)) {
                 p++;
             }
-            if (*p != '\0') {
-                PyErr_Format(PyExc_ValueError,
-                            "invalid literal for complex long double: %s",
-                            s);
+            if (has_brackets == NPY_TRUE) {
+                if (*p != ')') {
+                    goto parse_failure;
+                }
+                p++;
+                while (isspace((unsigned char) *p)) {
+                    p++;
+                }
+                if (*p != '\0') {
+                    goto parse_failure;
+                }
                 Py_XDECREF(b);
                 return temp;
             }
             else {
-                Py_XDECREF(b);
-                return temp;
+                if (*p != '\0') {
+                    goto parse_failure;
+                }
+                else {
+                    Py_XDECREF(b);
+                    return temp;
+                }   
             }
         }
 
@@ -715,42 +723,39 @@ string_to_long_cdouble(PyObject *op)
             }
         }
         else if (errno) {
-            PyErr_Format(PyExc_ValueError,
-                        "invalid literal for complex long double: %s (%s)",
-                        s,
-                        strerror(errno));
-            Py_XDECREF(b);
-            return temp;
+            goto parse_failure;
         }
 
         if (end == p) {
-            PyErr_Format(PyExc_ValueError,
-                        "invalid literal for complex long double: %s",
-                        s);
-            Py_XDECREF(b);
-            return temp;
+            goto parse_failure;
         }
 
-        if(*end != 'j' && *end != 'J') {
-            PyErr_Format(PyExc_ValueError,
-                        "invalid literal for complex long double: %s",
-                        s);
-            Py_XDECREF(b);
-            return temp;
+        if (*end != 'j' && *end != 'J') {
+            goto parse_failure;
         }
 
         end++;
-        while(*end != '\0' && isspace((unsigned char)*end)) {
+        while (*end != '\0' && isspace((unsigned char)*end)) {
             end++;
         }
-        if(*end != '\0') {
-            PyErr_Format(PyExc_ValueError,
-                        "invalid literal for complex long double: %s",
-                        s);
-            Py_XDECREF(b);
-            return temp;
-        }
 
+        if (has_brackets == NPY_TRUE) {
+            if (*end != ')') {
+                goto parse_failure;
+            }
+            end++;
+            while(isspace((unsigned char)*end)) {
+                end++;
+            }
+            if(*end != '\0') {
+                goto parse_failure;
+            }
+        }
+        else {
+            if (*end != '\0') {
+                goto parse_failure;
+            }
+        }
         npy_csetreall(&temp, real);
         npy_csetimagl(&temp, imag);
         Py_XDECREF(b);
@@ -759,8 +764,14 @@ string_to_long_cdouble(PyObject *op)
     else {
         PyErr_Clear();
         Py_XDECREF(b);
+        return temp;
     }
 
+parse_failure:
+    PyErr_Format(PyExc_ValueError,
+                "invalid literal for complex long double: %s",
+                start);
+    Py_XDECREF(b);
     return temp;
 }
 
@@ -783,7 +794,7 @@ CLONGDOUBLE_setitem(PyObject *op, void *ov, void *vap)
             npy_csetimagl(&temp, NPY_NAN);
         }
         else if (PyBytes_Check(op) || PyUnicode_Check(op)) {
-            temp = string_to_long_cdouble(op);
+            temp = string_to_clong_double(op);
         } else {
             Py_complex oop = PyComplex_AsCComplex(op);
             if (error_converting(oop.real)) {
