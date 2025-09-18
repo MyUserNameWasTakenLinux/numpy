@@ -795,7 +795,13 @@ CLONGDOUBLE_setitem(PyObject *op, void *ov, void *vap)
         }
         else if (PyBytes_Check(op) || PyUnicode_Check(op)) {
             temp = string_to_clong_double(op);
-        } else {
+        }
+        else if ((PyLong_Check(op) && !PyBool_Check(op))) {
+            npy_longdouble real = npy_longdouble_from_PyLong(op);
+            npy_csetreall(&temp, real);
+            npy_csetimagl(&temp, 0);
+        }
+        else {
             Py_complex oop = PyComplex_AsCComplex(op);
             if (error_converting(oop.real)) {
                 return -1;
